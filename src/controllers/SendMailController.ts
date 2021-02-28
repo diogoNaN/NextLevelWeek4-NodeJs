@@ -2,10 +2,13 @@ import { Request, Response } from "express";
 import { resolve } from "path";
 import { getCustomRepository } from "typeorm";
 
+import { AppError } from "../errors/AppError";
+
+import SendMailService from "../services/SendMailService";
+
 import { SurveysRepository } from "../repositories/SurveyRepository";
 import { UsersRepository } from "../repositories/UserRepository";
 import { SurveysUsersRepository } from "../repositories/SurveyUserRepository";
-import SendMailService from "../services/SendMailService";
 
 class SendMailController {
 
@@ -19,25 +22,13 @@ class SendMailController {
     const user = await usersRepository.findOne({email});
 
     if(!user) {
-      return res.status(400).json({
-        error: "User does not exists",
-      })
+      throw new AppError("User does not exists!");
     };
 
     const survey = await surveysRepository.findOne({id: survey_id});
   
     if(!survey) {
-      return res.status(400).json({
-        error: "Survey does not exists",
-      })
-    };
-
-    const varialbes = {
-      name: user.name,
-      title: survey.title,
-      description: survey.description,
-      user_id: user.id,
-      link: process.env.URL_MAIL,
+      throw new AppError("Survey User does not exists!");
     };
 
     const npsPath = resolve(
@@ -49,14 +40,24 @@ class SendMailController {
     );
 
     const surveyUserAlreadyExists = await surveysUsersRepository.findOne({
-      where: [
-        {user_id: user.id},
-        {value: null},
-      ],
+      where:{
+        user_id: user.id,
+        value: null,
+      },
       relations: ["user", "survey"],
     });
 
+    const varialbes = {
+      name: user.name,
+      title: survey.title,
+      description: survey.description,
+      id: "",
+      link: process.env.URL_MAIL,
+    };
+
     if(surveyUserAlreadyExists) {
+      varialbes.id = surveyUserAlreadyExists.id;
+
       await SendMailService.execute(
         email,
         survey.title,
@@ -73,6 +74,8 @@ class SendMailController {
     });
 
     await surveysUsersRepository.save(surveyUser);
+
+    varialbes.id = surveyUser.id;
 
     await SendMailService.execute(
       email,
